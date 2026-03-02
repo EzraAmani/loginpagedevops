@@ -1,53 +1,48 @@
 version: 2.1
 
 jobs:
-  build-and-test:
+  build:
     docker:
       - image: cimg/openjdk:11.0
     
+    working_directory: ~/project
+    
     steps:
-      - checkout
+      - checkout:
+          path: ~/project
       
-      # Restore cached dependencies
-      - restore_cache:
-          keys:
-            - v1-dependencies-{{ checksum "pom.xml" }}
-            - v1-dependencies-
-      
-      # Download dependencies (cached)
       - run:
-          name: Download dependencies
-          command: mvn dependency:go-offline
+          name: Verify files
+          command: |
+            pwd
+            ls -la
+            if [ ! -f "pom.xml" ]; then
+              echo "ERROR: pom.xml missing!"
+              exit 1
+            fi
+            echo "pom.xml found, building..."
       
-      # Save cache
-      - save_cache:
-          paths:
-            - ~/.m2
-          key: v1-dependencies-{{ checksum "pom.xml" }}
-      
-      # Build and package
       - run:
-          name: Build and package
+          name: Build with Maven
           command: mvn clean package
       
-      # Archive the WAR file
       - run:
-          name: Prepare artifacts
+          name: Verify WAR file
           command: |
-            mkdir -p artifacts
-            cp target/*.war artifacts/ || echo "No WAR file found"
+            if [ -f "target/devops.war" ]; then
+              echo "✓ WAR file created successfully"
+              ls -la target/devops.war
+            else
+              echo "✗ WAR file not found"
+              ls -la target/
+            fi
       
-      # Store artifacts
       - store_artifacts:
-          path: artifacts
-          destination: builds
-      
-      # Store test results
-      - store_test_results:
-          path: target/surefire-reports
+          path: target/devops.war
+          destination: devops-app.war
 
 workflows:
   version: 2
-  build-workflow:
+  build:
     jobs:
-      - build-and-test
+      - build
