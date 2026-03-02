@@ -5,44 +5,62 @@ jobs:
     docker:
       - image: cimg/openjdk:11.0
     
-    working_directory: ~/project
-    
     steps:
-      - checkout:
-          path: ~/project
+      - checkout
       
+      # Navigate to the devops directory where pom.xml is located
       - run:
-          name: Verify files
+          name: Go to project directory
           command: |
-            pwd
+            echo "Current directory: $(pwd)"
             ls -la
-            if [ ! -f "pom.xml" ]; then
-              echo "ERROR: pom.xml missing!"
+            echo "Looking for devops directory..."
+            if [ -d "devops" ]; then
+              cd devops
+              echo "✓ Found devops directory, pom.xml should be here"
+              ls -la
+            else
+              echo "✗ devops directory not found!"
               exit 1
             fi
-            echo "pom.xml found, building..."
       
+      # Install dependencies
       - run:
-          name: Build with Maven
-          command: mvn clean package
+          name: Install dependencies
+          command: |
+            cd devops
+            mvn dependency:go-offline
       
+      # Build the WAR file
+      - run:
+          name: Build WAR file
+          command: |
+            cd devops
+            mvn clean package
+            echo "✓ Build completed"
+      
+      # Verify WAR file was created
       - run:
           name: Verify WAR file
           command: |
+            cd devops
             if [ -f "target/devops.war" ]; then
-              echo "✓ WAR file created successfully"
+              echo "✓ WAR file created:"
               ls -la target/devops.war
             else
-              echo "✗ WAR file not found"
+              echo "✗ WAR file not found!"
               ls -la target/
+              exit 1
             fi
       
+      # Store the WAR file as artifact
       - store_artifacts:
-          path: target/devops.war
+          path: devops/target/devops.war
           destination: devops-app.war
+          when: always
 
 workflows:
   version: 2
-  build:
+  build-and-deploy:
     jobs:
       - build
