@@ -1,0 +1,8 @@
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:19 +0300] "GET /devops/ HTTP/1.1" 200 2475 http-bio-9090-exec-1 1893
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:19 +0300] "GET /devops/login HTTP/1.1" 200 2475 http-bio-9090-exec-3 48
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:28 +0300] "POST /devops/login HTTP/1.1" 302 - http-bio-9090-exec-5 19
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:29 +0300] "GET /devops/welcome HTTP/1.1" 200 1519 http-bio-9090-exec-6 228
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:32 +0300] "POST /devops/welcome HTTP/1.1" 302 - http-bio-9090-exec-7 2
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:32 +0300] "GET /devops/login HTTP/1.1" 200 2475 http-bio-9090-exec-8 6
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:43 +0300] "POST /devops/login HTTP/1.1" 302 - http-bio-9090-exec-9 5
+0:0:0:0:0:0:0:1 - - [02/Mar/2026:12:16:43 +0300] "GET /devops/welcome HTTP/1.1" 200 1519 http-bio-9090-exec-10 6
