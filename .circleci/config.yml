@@ -39,25 +39,83 @@ jobs:
             mvn clean package
             echo "✓ Build completed"
       
-      # Verify WAR file was created
+      # Verify WAR file and generate fingerprint
       - run:
-          name: Verify WAR file
+          name: Verify WAR file and generate fingerprint
           command: |
             cd devops
             if [ -f "target/devops.war" ]; then
-              echo "✓ WAR file created:"
-              ls -la target/devops.war
+              echo "✓ WAR file created successfully"
+              
+              # Get file size
+              FILESIZE=$(stat -c%s "target/devops.war")
+              echo "File size: $FILESIZE bytes"
+              
+              # Generate MD5 fingerprint
+              echo "=== MD5 Fingerprint ==="
+              md5sum target/devops.war | tee target/devops.war.md5
+              
+              # Generate SHA256 fingerprint (more secure)
+              echo "=== SHA256 Fingerprint ==="
+              sha256sum target/devops.war | tee target/devops.war.sha256
+              
+              # Show file details
+              echo "=== File Details ==="
+              file target/devops.war
+              ls -lh target/devops.war
+              
+              # Create a fingerprint file with all info
+              cat > target/fingerprint.txt << EOF
+              BUILD_FINGERPRINT
+              ================
+              Date: $(date -u)
+              Build: $CIRCLE_BUILD_NUM
+              Branch: $CIRCLE_BRANCH
+              Commit: $CIRCLE_SHA1
+              
+              WAR File: devops.war
+              Size: $FILESIZE bytes
+              MD5: $(md5sum target/devops.war | cut -d' ' -f1)
+              SHA256: $(sha256sum target/devops.war | cut -d' ' -f1)
+              EOF
+              
+              echo "✓ Fingerprint file created at target/fingerprint.txt"
+              cat target/fingerprint.txt
             else
               echo "✗ WAR file not found!"
               ls -la target/
               exit 1
             fi
       
-      # Store the WAR file as artifact
+      # Store the WAR file and fingerprints as artifacts
       - store_artifacts:
           path: devops/target/devops.war
           destination: devops-app.war
           when: always
+          
+      - store_artifacts:
+          path: devops/target/devops.war.md5
+          destination: devops-app.war.md5
+          when: always
+          
+      - store_artifacts:
+          path: devops/target/devops.war.sha256
+          destination: devops-app.war.sha256
+          when: always
+          
+      - store_artifacts:
+          path: devops/target/fingerprint.txt
+          destination: build-fingerprint.txt
+          when: always
+      
+      # Persist fingerprints to workspace for later jobs
+      - persist_to_workspace:
+          root: devops/target
+          paths:
+            - devops.war
+            - devops.war.md5
+            - devops.war.sha256
+            - fingerprint.txt
 
 workflows:
   version: 2
