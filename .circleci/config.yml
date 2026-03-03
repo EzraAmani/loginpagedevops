@@ -55,7 +55,7 @@ jobs:
               echo "=== MD5 Fingerprint ==="
               md5sum target/devops.war | tee target/devops.war.md5
               
-              # Generate SHA256 fingerprint (more secure)
+              # Generate SHA256 fingerprint
               echo "=== SHA256 Fingerprint ==="
               sha256sum target/devops.war | tee target/devops.war.sha256
               
@@ -64,20 +64,18 @@ jobs:
               file target/devops.war
               ls -lh target/devops.war
               
-              # Create a fingerprint file with all info - FIXED: escaped <<
-              cat > target/fingerprint.txt <<-'EOF'
-              BUILD_FINGERPRINT
-              ================
-              Date: $(date -u)
-              Build: $CIRCLE_BUILD_NUM
-              Branch: $CIRCLE_BRANCH
-              Commit: $CIRCLE_SHA1
-              
-              WAR File: devops.war
-              Size: $FILESIZE bytes
-              MD5: $(md5sum target/devops.war | cut -d' ' -f1)
-              SHA256: $(sha256sum target/devops.war | cut -d' ' -f1)
-              EOF
+              # Create fingerprint file - using simple echo statements
+              echo "BUILD_FINGERPRINT" > target/fingerprint.txt
+              echo "================" >> target/fingerprint.txt
+              echo "Date: $(date -u)" >> target/fingerprint.txt
+              echo "Build: $CIRCLE_BUILD_NUM" >> target/fingerprint.txt
+              echo "Branch: $CIRCLE_BRANCH" >> target/fingerprint.txt
+              echo "Commit: $CIRCLE_SHA1" >> target/fingerprint.txt
+              echo "" >> target/fingerprint.txt
+              echo "WAR File: devops.war" >> target/fingerprint.txt
+              echo "Size: $FILESIZE bytes" >> target/fingerprint.txt
+              echo "MD5: $(md5sum target/devops.war | cut -d' ' -f1)" >> target/fingerprint.txt
+              echo "SHA256: $(sha256sum target/devops.war | cut -d' ' -f1)" >> target/fingerprint.txt
               
               echo "✓ Fingerprint file created at target/fingerprint.txt"
               cat target/fingerprint.txt
