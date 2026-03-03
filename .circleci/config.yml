@@ -64,8 +64,8 @@ jobs:
               file target/devops.war
               ls -lh target/devops.war
               
-              # Create a fingerprint file with all info
-              cat > target/fingerprint.txt << EOF
+              # Create a fingerprint file with all info - FIXED: escaped <<
+              cat > target/fingerprint.txt <<-'EOF'
               BUILD_FINGERPRINT
               ================
               Date: $(date -u)
@@ -107,15 +107,6 @@ jobs:
           path: devops/target/fingerprint.txt
           destination: build-fingerprint.txt
           when: always
-      
-      # Persist fingerprints to workspace for later jobs
-      - persist_to_workspace:
-          root: devops/target
-          paths:
-            - devops.war
-            - devops.war.md5
-            - devops.war.sha256
-            - fingerprint.txt
 
 workflows:
   version: 2
