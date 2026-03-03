@@ -1,0 +1,93 @@
+image: cimg/openjdk:11.0
+
+stages:
+  - build
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+cache:
+  paths:
+    - .m2/repository/
+
+before_script:
+  - apt-get update && apt-get install -y file coreutils
+  - echo "Current directory: $(pwd)"
+  - ls -la
+  - echo "Looking for devops directory..."
+
+build:
+  stage: build
+  script:
+    # Navigate to devops directory
+    - if [ -d "devops" ]; then
+        cd devops;
+        echo "✓ Found devops directory, pom.xml should be here";
+        ls -la;
+      else
+        echo "✗ devops directory not found!";
+        exit 1;
+      fi
+    
+    # Install dependencies
+    - mvn dependency:go-offline
+    
+    # Build the WAR file
+    - mvn clean package
+    - echo "✓ Build completed"
+    
+    # Verify WAR file and generate fingerprint
+    - |
+      if [ -f "target/devops.war" ]; then
+        echo "✓ WAR file created successfully"
+        
+        # Get file size
+        FILESIZE=$(stat -c%s "target/devops.war")
+        echo "File size: $FILESIZE bytes"
+        
+        # Generate MD5 fingerprint
+        echo "=== MD5 Fingerprint ==="
+        md5sum target/devops.war | tee target/devops.war.md5
+        
+        # Generate SHA256 fingerprint
+        echo "=== SHA256 Fingerprint ==="
+        sha256sum target/devops.war | tee target/devops.war.sha256
+        
+        # Show file details
+        echo "=== File Details ==="
+        file target/devops.war
+        ls -lh target/devops.war
+        
+        # Create fingerprint file
+        echo "BUILD_FINGERPRINT" > target/fingerprint.txt
+        echo "================" >> target/fingerprint.txt
+        echo "Date: $(date -u)" >> target/fingerprint.txt
+        echo "Build: $CI_PIPELINE_ID" >> target/fingerprint.txt
+        echo "Job: $CI_JOB_ID" >> target/fingerprint.txt
+        echo "Branch: $CI_COMMIT_BRANCH" >> target/fingerprint.txt
+        echo "Commit: $CI_COMMIT_SHA" >> target/fingerprint.txt
+        echo "" >> target/fingerprint.txt
+        echo "WAR File: devops.war" >> target/fingerprint.txt
+        echo "Size: $FILESIZE bytes" >> target/fingerprint.txt
+        echo "MD5: $(md5sum target/devops.war | cut -d' ' -f1)" >> target/fingerprint.txt
+        echo "SHA256: $(sha256sum target/devops.war | cut -d' ' -f1)" >> target/fingerprint.txt
+        
+        echo "✓ Fingerprint file created at target/fingerprint.txt"
+        cat target/fingerprint.txt
+      else
+        echo "✗ WAR file not found!"
+        ls -la target/
+        exit 1
+      fi
+    
+    # Return to original directory
+    - cd ..
+  
+  artifacts:
+    paths:
+      - devops/target/devops.war
+      - devops/target/devops.war.md5
+      - devops/target/devops.war.sha256
+      - devops/target/fingerprint.txt
+    expire_in: 30 days
+    when: always
