@@ -2,60 +2,183 @@ image: cimg/openjdk:11.0
 
 stages:
   - build
-  - publish
+  - docker
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
-  # Change these to your actual Docker Hub details
-  DOCKERHUB_REPO: "your-dockerhub-username/your-repo-name"
+  DOCKER_IMAGE: "your-dockerhub-username/loginpagedevops"  # Change this to your DockerHub username
+  DOCKER_TAG: "$CI_COMMIT_SHORT_SHA"
 
 cache:
   paths:
     - .m2/repository/
 
-# --- BUILD STAGE ---
-build_war:
+before_script:
+  - apt-get update && apt-get install -y file coreutils docker.io
+  - echo "Current directory: $(pwd)"
+  - ls -la
+
+build:
   stage: build
-  before_script:
-    - apt-get update && apt-get install -y file coreutils
   script:
+    # Navigate to devops directory where pom.xml is located
     - if [ -d "devops" ]; then
         cd devops;
-        echo "✓ Found devops directory";
+        echo "✓ Found devops directory, pom.xml should be here";
+        ls -la;
       else
         echo "✗ devops directory not found!";
+        echo "Contents of current directory:";
+        ls -la;
         exit 1;
       fi
-    - mvn clean package -DskipTests
+    
+    # Install dependencies
+    - mvn dependency:go-offline
+    
+    # Build the WAR file
+    - mvn clean package
     - echo "✓ Build completed"
+    
+    # Verify WAR file and generate fingerprint
+    - |
+      if [ -f "target/devops.war" ]; then
+        echo "✓ WAR file created successfully"
+        
+        # Get file size
+        FILESIZE=$(stat -c%s "target/devops.war" 2>/dev/null || stat -f%z "target/devops.war" 2>/dev/null)
+        echo "File size: $FILESIZE bytes"
+        
+        # Generate MD5 fingerprint
+        echo "=== MD5 Fingerprint ==="
+        md5sum target/devops.war 2>/dev/null || md5 target/devops.war 2>/dev/null | tee target/devops.war.md5
+        
+        # Generate SHA256 fingerprint
+        echo "=== SHA256 Fingerprint ==="
+        sha256sum target/devops.war 2>/dev/null | tee target/devops.war.sha256
+        
+        # Show file details
+        echo "=== File Details ==="
+        file target/devops.war
+        ls -lh target/devops.war
+        
+        # Create fingerprint file
+        echo "BUILD_FINGERPRINT" > target/fingerprint.txt
+        echo "================" >> target/fingerprint.txt
+        echo "Date: $(date -u)" >> target/fingerprint.txt
+        echo "Build: $CI_PIPELINE_ID" >> target/fingerprint.txt
+        echo "Job: $CI_JOB_ID" >> target/fingerprint.txt
+        echo "Branch: $CI_COMMIT_BRANCH" >> target/fingerprint.txt
+        echo "Commit: $CI_COMMIT_SHA" >> target/fingerprint.txt
+        echo "" >> target/fingerprint.txt
+        echo "WAR File: devops.war" >> target/fingerprint.txt
+        echo "Size: $FILESIZE bytes" >> target/fingerprint.txt
+        echo "MD5: $(md5sum target/devops.war 2>/dev/null | cut -d' ' -f1 || md5 -q target/devops.war 2>/dev/null)" >> target/fingerprint.txt
+        echo "SHA256: $(sha256sum target/devops.war 2>/dev/null | cut -d' ' -f1)" >> target/fingerprint.txt
+        
+        echo "✓ Fingerprint file created at target/fingerprint.txt"
+        cat target/fingerprint.txt
+      else
+        echo "✗ WAR file not found!"
+        ls -la target/
+        exit 1
+      fi
+    
+    # Return to original directory (important for Docker build stage)
+    - cd ..
+  
   artifacts:
     paths:
       - devops/target/devops.war
+      - devops/target/devops.war.md5
+      - devops/target/devops.war.sha256
       - devops/target/fingerprint.txt
-    expire_in: 1 week
+    expire_in: 30 days
+    when: always
 
-# --- PUBLISH STAGE ---
-publish_docker:
-  stage: publish
-  image: docker:24.0.5
+docker-build:
+  stage: docker
+  image: docker:latest
   services:
-    - docker:24.0.5-dind
+    - docker:dind
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "Preparing Docker build..."
+    # Install necessary tools
+    - apk add --no-cache coreutils
+    # Login to DockerHub (set these variables in GitLab CI/CD settings)
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
-    # 1. Login to Docker Hub (Requires variables in GitLab Settings -> CI/CD)
-    - echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+    # Check if WAR file exists from build stage
+    - echo "Checking for WAR file..."
+    - ls -la devops/target/ || echo "devops/target/ not found"
     
-    # 2. Move into the directory where the Dockerfile and WAR are
-    - cd devops
+    # Create Dockerfile
+    - |
+      cat > Dockerfile << EOF
+      FROM cimg/openjdk:11.0
+      
+      # Create app directory
+      WORKDIR /app
+      
+      # Copy the WAR file
+      COPY devops/target/devops.war /app/app.war
+      
+      # Create a simple healthcheck script
+      RUN echo '#!/bin/bash' > /app/healthcheck.sh && \
+          echo 'if [ -f /app/app.war ]; then' >> /app/healthcheck.sh && \
+          echo '  echo "WAR file exists"' >> /app/healthcheck.sh && \
+          echo '  exit 0' >> /app/healthcheck.sh && \
+          echo 'else' >> /app/healthcheck.sh && \
+          echo '  echo "WAR file missing"' >> /app/healthcheck.sh && \
+          echo '  exit 1' >> /app/healthcheck.sh && \
+          echo 'fi' >> /app/healthcheck.sh && \
+          chmod +x /app/healthcheck.sh
+      
+      # Expose port (adjust if your app uses a different port)
+      EXPOSE 8080
+      
+      # Health check
+      HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+        CMD /app/healthcheck.sh || exit 1
+      
+      # Command to run the application
+      # Note: This assumes your WAR is executable (Spring Boot)
+      # If it's a standard WAR file, you'll need to add Tomcat
+      CMD ["java", "-jar", "app.war"]
+      EOF
     
-    # 3. Build the image
-    # We tag it with the commit hash for versioning and 'latest' for convenience
-    - docker build -t $DOCKERHUB_REPO:$CI_COMMIT_SHORT_SHA -t $DOCKERHUB_REPO:latest .
+    # Show Dockerfile
+    - echo "=== Dockerfile ==="
+    - cat Dockerfile
     
-    # 4. Push to Docker Hub
-    - docker push $DOCKERHUB_REPO:$CI_COMMIT_SHORT_SHA
-    - docker push $DOCKERHUB_REPO:latest
-    - echo "✓ Image successfully pushed to Docker Hub"
+    # Build Docker image
+    - docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
+    - docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
+    
+    # Push to DockerHub
+    - docker push $DOCKER_IMAGE:$DOCKER_TAG
+    - docker push $DOCKER_IMAGE:latest
+    
+    # Generate image information
+    - |
+      echo "=== Docker Image Information ==="
+      docker images $DOCKER_IMAGE
+      IMAGE_ID=$(docker inspect $DOCKER_IMAGE:$DOCKER_TAG --format='{{.Id}}')
+      echo "Image ID: $IMAGE_ID"
+      echo "Image Tag: $DOCKER_TAG"
+      echo "Image Size: $(docker images $DOCKER_IMAGE:$DOCKER_TAG --format='{{.Size}}')"
+      echo "$IMAGE_ID" > docker-image-id.txt
+  
+  artifacts:
+    paths:
+      - docker-image-id.txt
+    expire_in: 30 days
+  needs:
+    - build
   only:
-    - main  # Only push to Docker Hub when merging to main branch
+    - main
+    - master
+    - tags
